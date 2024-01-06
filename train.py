@@ -226,6 +226,9 @@ def train_model(config):
         print(f"Device memory: {torch.cuda.get_device_properties(device.index).total_memory / 1024 ** 3} GB")
     elif (device == 'mps'):
         print(f"Device name: <mps>")
+    elif config['device_name'] == 'tpu':
+        device = xm.xla_device()
+        print(f"Device name: <TPU>")
     else:
         print("NOTE: If you have a GPU, consider using it for training.")
         print("      On a Windows machine with NVidia GPU, check this video: https://www.youtube.com/watch?v=GMSjDTU8Zlc")
