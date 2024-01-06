@@ -12,7 +12,7 @@ def get_config():
         "lang_tgt": "it",
         "model_folder": "weights",
         "experiment_name": "runs/tmodel",
-        "device_name": "gpu"
+        "device_name": "gpu",
         "preload": "latest",
         "tokenizer_file": "tokenizer_{0}.json",
         "experiment_name": "runs/tmodel"
