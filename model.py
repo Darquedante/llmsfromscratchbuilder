@@ -1,6 +1,9 @@
 import torch
 import torch.nn as nn
 import math
+import time
+from metric import metric
+
 
 class LayerNormalization(nn.Module):
 
@@ -11,13 +14,16 @@ class LayerNormalization(nn.Module):
         self.bias = nn.Parameter(torch.zeros(features)) # bias is a learnable parameter
 
     def forward(self, x):
+        metric.start()
         # x: (batch, seq_len, hidden_size)
          # Keep the dimension for broadcasting
         mean = x.mean(dim = -1, keepdim = True) # (batch, seq_len, 1)
         # Keep the dimension for broadcasting
         std = x.std(dim = -1, keepdim = True) # (batch, seq_len, 1)
         # eps is to prevent dividing by zero or when std is very small
-        return self.alpha * (x - mean) / (std + self.eps) + self.bias
+        x = self.alpha * (x - mean) / (std + self.eps) + self.bias
+        metric.emit(self, x)
+        return x
 
 class FeedForwardBlock(nn.Module):
 
@@ -29,7 +35,9 @@ class FeedForwardBlock(nn.Module):
 
     def forward(self, x):
         # (batch, seq_len, d_model) --> (batch, seq_len, d_ff) --> (batch, seq_len, d_model)
-        return self.linear_2(self.dropout(torch.relu(self.linear_1(x))))
+        x = self.linear_2(self.dropout(torch.relu(self.linear_1(x))))
+        metric.emit(self, x)
+        return x
 
 class InputEmbeddings(nn.Module):
 
@@ -40,9 +48,12 @@ class InputEmbeddings(nn.Module):
         self.embedding = nn.Embedding(vocab_size, d_model)
 
     def forward(self, x):
+        metric.start()
         # (batch, seq_len) --> (batch, seq_len, d_model)
         # Multiply by sqrt(d_model) to scale the embeddings according to the paper
-        return self.embedding(x) * math.sqrt(self.d_model)
+        x = self.embedding(x) * math.sqrt(self.d_model)
+        metric.emit(self, x)
+        return x
     
 class PositionalEncoding(nn.Module):
 
@@ -67,18 +78,23 @@ class PositionalEncoding(nn.Module):
         self.register_buffer('pe', pe)
 
     def forward(self, x):
-        x = x + (self.pe[:, :x.shape[1], :]).requires_grad_(False) # (batch, seq_len, d_model)
-        return self.dropout(x)
+        metric.start()
+        x = x + (self.pe[:, : x.shape[1], :]).requires_grad_(
+            False
+        )  # (batch, seq_len, d_model)
+        x = self.dropout(x)
+        metric.emit(self, x)
+        return x
 
 class ResidualConnection(nn.Module):
     
-        def __init__(self, features: int, dropout: float) -> None:
-            super().__init__()
-            self.dropout = nn.Dropout(dropout)
-            self.norm = LayerNormalization(features)
+    def __init__(self, dropout: float) -> None:
+        super().__init__()
+        self.dropout = nn.Dropout(dropout)
+        self.norm = LayerNormalization()
     
-        def forward(self, x, sublayer):
-            return x + self.dropout(sublayer(self.norm(x)))
+    def forward(self, x, sublayer):
+        return x + self.dropout(sublayer(self.norm(x)))
 
 class MultiHeadAttentionBlock(nn.Module):
 
@@ -131,7 +147,10 @@ class MultiHeadAttentionBlock(nn.Module):
 
         # Multiply by Wo
         # (batch, seq_len, d_model) --> (batch, seq_len, d_model)  
-        return self.w_o(x)
+        # (batch, seq_len, d_model) --> (batch, seq_len, d_model)
+        x = self.w_o(x)
+        metric.emit(self, x)
+        return x
 
 class EncoderBlock(nn.Module):
 
@@ -156,7 +175,8 @@ class Encoder(nn.Module):
     def forward(self, x, mask):
         for layer in self.layers:
             x = layer(x, mask)
-        return self.norm(x)
+        x = self.norm(x)
+        return x
 
 class DecoderBlock(nn.Module):
 
