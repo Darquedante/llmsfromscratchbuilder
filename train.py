@@ -98,6 +98,13 @@ def run_validation(model, validation_ds, tokenizer_src, tokenizer_tgt, max_len, 
             print_msg(f"{f'TARGET: ':>12}{target_text}")
             print_msg(f"{f'PREDICTED: ':>12}{model_out_text}")
 
+            
+            # get accuracy
+            cc, expected_ranks, source_ranks = get_accuracy(target_text, source_text, plot=True)
+            print_msg(f"{f'CC target vs initial: ':>12}{cc:.3f}")
+            cc, expected_ranks, predicted_ranks = get_accuracy(target_text, model_out_text, plot=True)
+            print_msg(f"{f'CC target vs predict: ':>12}{cc:.3f}")
+
             if count == num_examples:
                 print_msg('-'*console_width)
                 break
@@ -119,11 +126,17 @@ def run_validation(model, validation_ds, tokenizer_src, tokenizer_tgt, max_len, 
         # Compute the BLEU metric
         metric = torchmetrics.BLEUScore()
         bleu = metric(predicted, expected)
-        writer.add_scalar('validation BLEU', bleu, global_step)
+        # Compute the spearman rank correlation on gene rank
+        cc = get_accuracies(predicted, expected)
+        writer.add_scalar('spearman cc', cc, global_step)
         writer.flush()
 
-def get_all_sentences(ds, lang):
+def get_all_sentences_original(ds, lang):
     for item in ds:
+        yield item['translation'][lang]
+
+def get_all_sentences(ds, lang):
+    for item in ds[:5]:
         yield item['translation'][lang]
 
 def get_or_build_tokenizer(config, ds, lang):
