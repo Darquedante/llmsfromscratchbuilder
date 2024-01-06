@@ -11,6 +11,7 @@ from torch.optim.lr_scheduler import LambdaLR
 import warnings
 from tqdm import tqdm
 import os
+import random
 from pathlib import Path
 
 # Huggingface datasets and tokenizers
@@ -138,6 +139,36 @@ def get_or_build_tokenizer(config, ds, lang):
         tokenizer = Tokenizer.from_file(str(tokenizer_path))
     return tokenizer
 
+def get_subset(dataset, percentage):
+    """
+    Get a random subset of a Hugging Face dataset based on a percentage.
+    Args:
+        dataset (datasets.Dataset): The input Hugging Face dataset.
+        percentage (float): The percentage of the dataset to include in the subset.
+    Returns:
+        datasets.Dataset: The random subset of the dataset.
+    """
+    if 0. >= percentage or percentage >= 1.:
+        return dataset
+
+    # Get the total number of examples in the dataset
+    total_examples = len(dataset)
+
+    # Calculate the number of examples to select
+    num_examples_to_select = int(total_examples * percentage)
+
+    # Shuffle the indices of the examples
+    shuffled_indices = list(range(total_examples))
+    random.shuffle(shuffled_indices)
+
+    # Use the first num_examples_to_select indices to get the subset
+    subset_indices = shuffled_indices[:num_examples_to_select]
+
+    # Return the subset of the dataset
+    return dataset.select(subset_indices)
+
+
+
 def get_ds(config):
     # It only has the train split, so we divide it overselves
     ds_raw = load_dataset(f"{config['datasource']}", f"{config['lang_src']}-{config['lang_tgt']}", split='train')
@@ -167,9 +198,18 @@ def get_ds(config):
     print(f'Max length of source sentence: {max_len_src}')
     print(f'Max length of target sentence: {max_len_tgt}')
     
+    def collate_fn(batch):
+        # Remove None values from the batch
+        batch = [sample for sample in batch if sample is not None]
 
-    train_dataloader = DataLoader(train_ds, batch_size=config['batch_size'], shuffle=True)
-    val_dataloader = DataLoader(val_ds, batch_size=1, shuffle=True)
+        if len(batch) == 0:
+            # If all samples are None, return an empty tensor
+            return torch.tensor([])
+
+        return torch.utils.data.dataloader.default_collate(batch)
+
+    train_dataloader = DataLoader(train_ds, batch_size=config['batch_size'], shuffle=True, collate_fn=collate_fn)
+    val_dataloader = DataLoader(val_ds, batch_size=1, shuffle=True, collate_fn=collate_fn)
 
     return train_dataloader, val_dataloader, tokenizer_src, tokenizer_tgt
 
